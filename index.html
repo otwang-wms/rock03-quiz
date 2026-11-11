@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>岩石與礦物搶答大對決</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel for JSX -->
+    <script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        /* 防止平板連續點擊時造成螢幕縮放或反白 */
+        body {
+            touch-action: manipulation;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* 3D 卡片翻轉特效設定 */
+        .card-container {
+            perspective: 1000px;
+        }
+        .card-inner {
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        .card-container.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+        .card-face {
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15);
+        }
+        .card-front {
+            background: linear-gradient(135deg, #fef08a 0%, #fde047 100%);
+            border: 6px solid #eab308;
+        }
+        .card-back {
+            background: linear-gradient(135deg, #bfdbfe 0%, #93c5fd 100%);
+            border: 6px solid #3b82f6;
+            transform: rotateY(180deg);
+        }
+
+        /* 豪華證書背景 */
+        .certificate-bg {
+            background-color: #ffffff;
+            border: 20px solid #d4af37; /* 金色邊框 */
+            outline: 5px solid #856d22;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.1), 0 15px 30px rgba(0,0,0,0.4);
+            background-image: radial-gradient(#fef08a 1px, transparent 1px);
+            background-size: 30px 30px;
+        }
+
+        /* 按鈕遮罩動畫 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-out forwards;
+        }
+    </style>
+</head>
+<body class="bg-blue-50 overflow-hidden font-sans text-gray-800">
+    <div id="root" class="w-screen h-screen"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // 解析自 Excel 檔案的資料
+        const rockData = [
+            {"編號": 1, "名稱": "石灰岩", "特色": "主要是由方解石所組成的"},
+            {"編號": 2, "名稱": "石灰岩", "特色": "是製作水泥的主要材料"},
+            {"編號": 3, "名稱": "花崗岩", "特色": "硬度比較高（約 7 級），可做成建築的材料，例如：牆壁、地板"},
+            {"編號": 4, "名稱": "花崗岩", "特色": "由長石、黑雲母或白雲母、石英等礦物所組成的"},
+            {"編號": 5, "名稱": "石墨", "特色": "顏色比較黑，硬度小，可導電"},
+            {"編號": 6, "名稱": "石墨", "特色": "可以作為鉛筆筆心的原料"},
+            {"編號": 7, "名稱": "石英", "特色": "若有良好的結晶型態，可以稱為水晶，可以加工成為飾品"},
+            {"編號": 8, "名稱": "石英", "特色": "硬度 7 級，抗磨損能力高，可以做成地磚"},
+            {"編號": 9, "名稱": "板岩", "特色": "容易堆疊且質地堅硬，原住民族常拿來當建築石板屋的材料"},
+            {"編號": 10, "名稱": "板岩", "特色": "質地堅硬且具有極易剝離成平整薄板的特性"},
+            {"編號": 11, "名稱": "硫磺", "特色": "鮮黃色或淡黃色晶體/粉末，具特殊刺鼻氣味"},
+            {"編號": 12, "名稱": "硫磺", "特色": "容易燃燒，因此是製作火藥的原料"},
+            {"編號": 13, "名稱": "滑石", "特色": "白色、灰白色或淺綠色，具珍珠光澤"},
+            {"編號": 14, "名稱": "滑石", "特色": "硬度 1 級 (最軟標準礦物)，摸起來具滑膩感"},
+            {"編號": 15, "名稱": "方解石", "特色": "石灰岩中乳白色顆粒狀的礦物"},
+            {"編號": 16, "名稱": "方解石", "特色": "無色透明或乳白色，常見菱面體結晶，硬度 3 級"},
+            {"編號": 17, "名稱": "金剛石(鑽石)", "特色": "無色透明或彩鑽，珍貴「珠寶飾品」"},
+            {"編號": 18, "名稱": "金剛石(鑽石)", "特色": "硬度 10 級(自然界最硬標準礦物)"}
+        ];
+
+        const App = () => {
+            const [screen, setScreen] = useState("login"); // "login", "game", "result"
+            
+            // 玩家資訊
+            const [p1Name, setP1Name] = useState("");
+            const [p2Name, setP2Name] = useState("");
+            const [p1Score, setP1Score] = useState(0);
+            const [p2Score, setP2Score] = useState(0);
+            
+            // 遊戲狀態
+            const [currentCard, setCurrentCard] = useState(null);
+            const [isFlipped, setIsFlipped] = useState(false);
+            const [buzzerLocked, setBuzzerLocked] = useState(false);
+            const [answeringPlayer, setAnsweringPlayer] = useState(null);
+            const [showAddPoint, setShowAddPoint] = useState(false);
+            const [showNextBtn, setShowNextBtn] = useState(false);
+            const [pointAdded, setPointAdded] = useState(false);
+
+            // 隨機抽選卡片（避免抽到與上一題重複的編號）
+            const getRandomCard = (excludeId) => {
+                const availableCards = rockData.filter(c => c.編號 !== excludeId);
+                const randomIndex = Math.floor(Math.random() * availableCards.length);
+                return availableCards[randomIndex];
+            };
+
+            const startGame = () => {
+                if (!p1Name.trim() || !p2Name.trim()) {
+                    alert("請確實填寫 1P 與 2P 的名稱或暱稱唷！");
+                    return;
+                }
+                setCurrentCard(getRandomCard(null));
+                setScreen("game");
+            };
+
+            const handleBuzzer = (player) => {
+                if (buzzerLocked) return;
+                
+                setBuzzerLocked(true);
+                setAnsweringPlayer(player);
+                
+                // 等待1秒後顯示加分與下一題按鈕
+                setTimeout(() => {
+                    setShowAddPoint(true);
+                    setShowNextBtn(true);
+                }, 1000);
+            };
+
+            const handleAddPoint = (player) => {
+                if (pointAdded) return;
+                
+                let newP1 = p1Score;
+                let newP2 = p2Score;
+                
+                if (player === '1P') {
+                    newP1 += 1;
+                    setP1Score(newP1);
+                } else {
+                    newP2 += 1;
+                    setP2Score(newP2);
+                }
+                
+                setPointAdded(true);
+                setShowAddPoint(false);
+
+                // 檢查是否獲勝 (先得 9 分)
+                if (newP1 >= 9 || newP2 >= 9) {
+                    setTimeout(() => {
+                        setScreen("result");
+                    }, 800); // 稍微延遲讓學生看到加分效果
+                }
+            };
+
+            const handleNextQuestion = () => {
+                setCurrentCard(getRandomCard(currentCard.編號));
+                setIsFlipped(false);
+                setBuzzerLocked(false);
+                setAnsweringPlayer(null);
+                setShowAddPoint(false);
+                setShowNextBtn(false);
+                setPointAdded(false);
+            };
+
+            const resetGame = () => {
+                setP1Score(0);
+                setP2Score(0);
+                setScreen("login");
+            };
+
+            // 算分與稱讚詞語邏輯
+            const getPraiseText = () => {
+                const diff = Math.abs(p1Score - p2Score);
+                if (diff >= 7) return "太神啦！壓倒性的實力差距，簡直是無可匹敵的岩石礦物學大師！";
+                if (diff >= 4) return "表現卓越！對岩石與礦物有著非常深入的了解，實力堅強！";
+                if (diff >= 2) return "精彩絕倫的對決！憑藉過人的反應與知識，成功贏得最終勝利！";
+                return "勢均力敵的巔峰之戰！險勝一籌，表現相當棒喔！";
+            };
+
+            // ================= 畫面：登入頁 =================
+            if (screen === "login") {
+                return (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-green-100 to-blue-100 p-6">
+                        <div className="bg-white rounded-3xl shadow-2xl p-10 max-w-4xl w-full text-center">
+                            <h1 className="text-5xl font-black text-green-700 mb-8 tracking-wide">
+                                🪨 岩石礦物搶答大對決 💎
+                            </h1>
+                            
+                            <div className="bg-yellow-50 border-l-8 border-yellow-400 p-6 mb-10 text-left rounded-r-2xl">
+                                <h3 className="text-2xl font-bold text-yellow-800 mb-3 flex items-center">
+                                    <span className="text-3xl mr-2">📜</span> 遊戲說明
+                                </h3>
+                                <p className="text-xl text-gray-700 leading-relaxed font-medium">
+                                    這個遊戲是由 2 人進行搶答對決，遊戲進行時，畫面中的卡片會隨機出現岩石或礦物的特色描述，2 人點擊各自的按鈕來進行搶答。
+                                    答案是否正確，可以翻轉卡片查詢答案，由 2 人自行確認是否得分。<br/><br/>
+                                    <span className="text-red-600 font-bold">🎯 目標：最先獲得 9 分的人即可贏得這場對決！</span>
+                                </p>
+                            </div>
+
+                            <div className="flex justify-between items-center space-x-8 mb-10">
+                                <div className="flex-1 bg-blue-50 p-8 rounded-3xl border-4 border-blue-200 shadow-inner">
+                                    <label className="block text-3xl font-black text-blue-600 mb-4">1P 玩家</label>
+                                    <input 
+                                        type="text" 
+                                        value={p1Name} 
+                                        onChange={e => setP1Name(e.target.value)} 
+                                        placeholder="輸入名稱或暱稱"
+                                        className="w-full text-center text-2xl p-4 border-4 border-blue-300 rounded-2xl focus:outline-none focus:border-blue-500 font-bold text-blue-900"
+                                    />
+                                </div>
+                                
+                                <div className="text-5xl font-black text-gray-300 italic">VS</div>
+                                
+                                <div className="flex-1 bg-red-50 p-8 rounded-3xl border-4 border-red-200 shadow-inner">
+                                    <label className="block text-3xl font-black text-red-600 mb-4">2P 玩家</label>
+                                    <input 
+                                        type="text" 
+                                        value={p2Name} 
+                                        onChange={e => setP2Name(e.target.value)} 
+                                        placeholder="輸入名稱或暱稱"
+                                        className="w-full text-center text-2xl p-4 border-4 border-red-300 rounded-2xl focus:outline-none focus:border-red-500 font-bold text-red-900"
+                                    />
+                                </div>
+                            </div>
+
+                            <button 
+                                onClick={startGame}
+                                className="bg-green-600 hover:bg-green-500 text-white text-4xl font-black py-5 px-16 rounded-full shadow-[0_10px_0_rgb(21,128,61)] active:shadow-none active:translate-y-2 transition-all"
+                            >
+                                開始遊戲 🚀
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+
+            // ================= 畫面：遊戲頁 =================
+            if (screen === "game") {
+                return (
+                    <div className="w-full h-full max-w-6xl mx-auto flex flex-col justify-between p-4 relative">
+                        
+                        {/* 頂部：分數板 */}
+                        <div className="flex justify-between items-start bg-white/90 rounded-3xl shadow-xl p-4 border-b-4 border-gray-200">
+                            {/* 1P 分數 */}
+                            <div className="w-1/3 flex flex-col items-center">
+                                <div className="bg-blue-100 text-blue-800 text-2xl font-black py-2 px-6 rounded-t-xl w-full text-center truncate">
+                                    1P: {p1Name}
+                                </div>
+                                <div className="text-6xl font-black text-blue-600 my-2">{p1Score}</div>
+                                <div className="h-16 flex items-center justify-center">
+                                    {showAddPoint && answeringPlayer === '1P' && !pointAdded && (
+                                        <button onClick={() => handleAddPoint('1P')} className="fade-in bg-green-500 text-white text-xl font-bold py-2 px-6 rounded-full shadow-lg hover:bg-green-400 active:scale-95 transition-transform animate-bounce">
+                                            🌟 +1 加分
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* 標題與提示 */}
+                            <div className="w-1/3 flex flex-col items-center justify-center pt-2">
+                                <h2 className="text-3xl font-black text-gray-700">搶答大對決</h2>
+                                <p className="text-lg font-bold text-gray-400 mt-1">搶先獲得 9 分者獲勝</p>
+                            </div>
+
+                            {/* 2P 分數 */}
+                            <div className="w-1/3 flex flex-col items-center">
+                                <div className="bg-red-100 text-red-800 text-2xl font-black py-2 px-6 rounded-t-xl w-full text-center truncate">
+                                    2P: {p2Name}
+                                </div>
+                                <div className="text-6xl font-black text-red-600 my-2">{p2Score}</div>
+                                <div className="h-16 flex items-center justify-center">
+                                    {showAddPoint && answeringPlayer === '2P' && !pointAdded && (
+                                        <button onClick={() => handleAddPoint('2P')} className="fade-in bg-green-500 text-white text-xl font-bold py-2 px-6 rounded-full shadow-lg hover:bg-green-400 active:scale-95 transition-transform animate-bounce">
+                                            🌟 +1 加分
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 中間：卡片區 */}
+                        <div className="flex-1 flex flex-col items-center justify-center w-full relative z-10 py-4">
+                            <div className={`card-container w-full max-w-2xl h-80 cursor-pointer ${isFlipped ? 'flipped' : ''}`} onClick={() => setIsFlipped(!isFlipped)}>
+                                <div className="card-inner">
+                                    {/* 卡片正面：特色 */}
+                                    <div className="card-face card-front">
+                                        <div className="bg-yellow-100 text-yellow-700 px-4 py-1 rounded-full font-bold text-xl mb-4 border-2 border-yellow-300">
+                                            特色描述
+                                        </div>
+                                        <p className="text-4xl font-bold text-gray-800 text-center leading-snug break-words">
+                                            {currentCard?.特色}
+                                        </p>
+                                    </div>
+                                    {/* 卡片背面：名稱 */}
+                                    <div className="card-face card-back">
+                                        <div className="bg-blue-100 text-blue-700 px-4 py-1 rounded-full font-bold text-xl mb-4 border-2 border-blue-300">
+                                            岩石 / 礦物名稱
+                                        </div>
+                                        <p className="text-7xl font-black text-blue-900 tracking-widest text-center">
+                                            {currentCard?.名稱}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button onClick={() => setIsFlipped(!isFlipped)} className="mt-8 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-10 rounded-full shadow-[0_6px_0_rgb(67,56,202)] active:shadow-none active:translate-y-1 transition-all text-2xl">
+                                🔄 翻轉卡片
+                            </button>
+                        </div>
+
+                        {/* 底部：搶答按鈕與下一題 */}
+                        <div className="flex justify-between items-end h-56 px-8 pb-8 relative">
+                            {/* 1P 按鈕區 */}
+                            <div className="w-1/3 flex flex-col items-center relative z-20">
+                                <div className="h-12 mb-2">
+                                    {answeringPlayer === '1P' && <span className="text-4xl font-black text-blue-600 fade-in animate-pulse">👇 1P 作答！</span>}
+                                </div>
+                                <button 
+                                    disabled={buzzerLocked}
+                                    onClick={() => handleBuzzer('1P')}
+                                    className={`w-40 h-40 rounded-full text-4xl font-black transition-all flex items-center justify-center ${
+                                        buzzerLocked 
+                                        ? 'bg-gray-300 border-b-8 border-gray-400 text-gray-500 opacity-60 cursor-not-allowed scale-95' 
+                                        : 'bg-blue-500 border-b-[12px] border-blue-700 text-white hover:bg-blue-400 active:border-b-0 active:translate-y-3 shadow-[0_0_20px_rgba(59,130,246,0.6)]'
+                                    }`}
+                                >
+                                    1P<br/>搶答
+                                </button>
+                            </div>
+
+                            {/* 下一題按鈕 */}
+                            <div className="w-1/3 flex flex-col items-center justify-end pb-8 z-30">
+                                {showNextBtn && (
+                                    <button 
+                                        onClick={handleNextQuestion} 
+                                        className="fade-in bg-purple-600 text-white text-3xl font-black py-4 px-10 rounded-2xl shadow-[0_8px_0_rgb(126,34,206)] hover:bg-purple-500 active:shadow-none active:translate-y-2 transition-all"
+                                    >
+                                        下一題 ➡️
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* 2P 按鈕區 */}
+                            <div className="w-1/3 flex flex-col items-center relative z-20">
+                                <div className="h-12 mb-2">
+                                    {answeringPlayer === '2P' && <span className="text-4xl font-black text-red-600 fade-in animate-pulse">👇 2P 作答！</span>}
+                                </div>
+                                <button 
+                                    disabled={buzzerLocked}
+                                    onClick={() => handleBuzzer('2P')}
+                                    className={`w-40 h-40 rounded-full text-4xl font-black transition-all flex items-center justify-center ${
+                                        buzzerLocked 
+                                        ? 'bg-gray-300 border-b-8 border-gray-400 text-gray-500 opacity-60 cursor-not-allowed scale-95' 
+                                        : 'bg-red-500 border-b-[12px] border-red-700 text-white hover:bg-red-400 active:border-b-0 active:translate-y-3 shadow-[0_0_20px_rgba(239,68,68,0.6)]'
+                                    }`}
+                                >
+                                    2P<br/>搶答
+                                </button>
+                            </div>
+                            
+                            {/* 遮罩背景（當有人搶答時調暗背景，凸顯作答者） */}
+                            {buzzerLocked && (
+                                <div className="absolute inset-0 bg-gray-500/10 rounded-3xl pointer-events-none transition-opacity duration-300"></div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+
+            // ================= 畫面：結算證書頁 =================
+            if (screen === "result") {
+                const winnerName = p1Score >= 9 ? p1Name : (p2Score >= 9 ? p2Name : '雙方');
+                return (
+                    <div className="w-full h-full flex items-center justify-center bg-gray-900 p-8">
+                        <div className="certificate-bg w-full max-w-5xl rounded-lg p-16 flex flex-col items-center text-center relative animate-[fadeIn_1s_ease-out]">
+                            
+                            {/* 證書裝飾線 */}
+                            <div className="absolute inset-4 border-2 border-yellow-600 opacity-50 pointer-events-none"></div>
+                            <div className="absolute inset-6 border border-yellow-700 opacity-30 pointer-events-none"></div>
+
+                            <h1 className="text-6xl font-black text-yellow-700 mb-6 tracking-widest drop-shadow-sm">🏆 恭喜獲勝 🏆</h1>
+                            
+                            <p className="text-2xl text-gray-600 mb-4 font-bold">卓越岩石礦物學家</p>
+                            <h2 className="text-7xl font-black text-gray-800 mb-8 border-b-4 border-gray-800 pb-4 px-12">{winnerName}</h2>
+                            
+                            <p className="text-3xl text-gray-800 mb-12 max-w-3xl leading-relaxed font-bold">
+                                {getPraiseText()}
+                            </p>
+                            
+                            <div className="bg-white/80 px-10 py-6 rounded-2xl shadow-md border-2 border-gray-200 mb-12">
+                                <h3 className="text-2xl text-gray-500 font-bold mb-4">最終比賽結果</h3>
+                                <div className="flex items-center justify-center space-x-10">
+                                    <div className="text-center">
+                                        <div className="text-xl text-gray-500 mb-1">{p1Name}</div>
+                                        <div className="text-5xl font-black text-blue-600">{p1Score}</div>
+                                    </div>
+                                    <div className="text-4xl text-gray-300 font-black italic">VS</div>
+                                    <div className="text-center">
+                                        <div className="text-xl text-gray-500 mb-1">{p2Name}</div>
+                                        <div className="text-5xl font-black text-red-600">{p2Score}</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <button 
+                                onClick={resetGame} 
+                                className="bg-yellow-600 hover:bg-yellow-500 text-white font-black py-4 px-12 rounded-full text-2xl shadow-lg transition-transform hover:scale-105 active:scale-95"
+                            >
+                                再玩一次 🔄
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
