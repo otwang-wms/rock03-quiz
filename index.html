@@ -109,6 +109,9 @@
             {"編號": 18, "名稱": "金剛石(鑽石)", "特色": "硬度 10 級(自然界最硬標準礦物)"}
         ];
 
+        // 取得題目所屬的成對群組編號：(1,2)->1, (3,4)->2, ..., (17,18)->9
+        const getGroupId = (id) => Math.ceil(id / 2);
+
         const App = () => {
             const [screen, setScreen] = useState("login");
             const [p1Name, setP1Name] = useState("");
@@ -118,14 +121,21 @@
             
             const [currentCard, setCurrentCard] = useState(null);
             const [isFlipped, setIsFlipped] = useState(false);
+            const [isTransitioning, setIsTransitioning] = useState(false);
             const [buzzerLocked, setBuzzerLocked] = useState(false);
             const [answeringPlayer, setAnsweringPlayer] = useState(null);
             const [showAddPoint, setShowAddPoint] = useState(false);
             const [showNextBtn, setShowNextBtn] = useState(false);
             const [pointAdded, setPointAdded] = useState(false);
 
+            // 修正 1：排除同組編號（例如抽到 1 時，同時排除 1 與 2，從 3~18 隨機挑選）
             const getRandomCard = (excludeId) => {
-                const availableCards = rockData.filter(c => c.編號 !== excludeId);
+                if (excludeId === null || excludeId === undefined) {
+                    const randomIndex = Math.floor(Math.random() * rockData.length);
+                    return rockData[randomIndex];
+                }
+                const excludeGroup = getGroupId(excludeId);
+                const availableCards = rockData.filter(c => getGroupId(c.編號) !== excludeGroup);
                 const randomIndex = Math.floor(Math.random() * availableCards.length);
                 return availableCards[randomIndex];
             };
@@ -136,11 +146,18 @@
                     return;
                 }
                 setCurrentCard(getRandomCard(null));
+                setIsFlipped(false);
+                setIsTransitioning(false);
                 setScreen("game");
             };
 
+            const handleToggleFlip = () => {
+                if (isTransitioning) return;
+                setIsFlipped(prev => !prev);
+            };
+
             const handleBuzzer = (player) => {
-                if (buzzerLocked) return;
+                if (buzzerLocked || isTransitioning) return;
                 setBuzzerLocked(true);
                 setAnsweringPlayer(player);
                 setTimeout(() => {
@@ -169,19 +186,42 @@
                 }
             };
 
-            const handleNextQuestion = () => {
+            // 抽下一題並重置本回合狀態
+            const loadNextRound = () => {
                 setCurrentCard(getRandomCard(currentCard.編號));
-                setIsFlipped(false);
                 setBuzzerLocked(false);
                 setAnsweringPlayer(null);
                 setShowAddPoint(false);
                 setShowNextBtn(false);
                 setPointAdded(false);
+                setIsTransitioning(false);
+            };
+
+            // 修正 2：點擊「下一題」時，若卡片不在「題目」面，先自動翻回「題目」面後再換題
+            const handleNextQuestion = () => {
+                if (isTransitioning) return;
+
+                if (isFlipped) {
+                    setIsTransitioning(true);
+                    setIsFlipped(false); // 先翻回「題目」那一面
+                    setTimeout(() => {
+                        loadNextRound(); // 待翻牌動畫完全結束後，才切換為下一題的題目
+                    }, 520);
+                } else {
+                    loadNextRound();
+                }
             };
 
             const resetGame = () => {
                 setP1Score(0);
                 setP2Score(0);
+                setIsFlipped(false);
+                setIsTransitioning(false);
+                setBuzzerLocked(false);
+                setAnsweringPlayer(null);
+                setShowAddPoint(false);
+                setShowNextBtn(false);
+                setPointAdded(false);
                 setScreen("login");
             };
 
@@ -253,7 +293,7 @@
                 return (
                     <div className="w-full h-[100dvh] max-w-5xl mx-auto flex flex-col justify-between p-2.5 sm:p-4 overflow-hidden box-border">
                         
-                        {/* 1. 頂部記分板 (shrink-0，高約 75px-90px) */}
+                        {/* 1. 頂部記分板 */}
                         <div className="shrink-0 flex items-center justify-between bg-white/90 backdrop-blur rounded-2xl shadow-sm border border-slate-200 px-3 py-2 sm:px-6">
                             {/* 1P 狀態 */}
                             <div className="flex items-center space-x-2 sm:space-x-4">
@@ -303,14 +343,14 @@
                             </div>
                         </div>
 
-                        {/* 2. 中間卡片與翻牌區 (flex-1 min-h-0，高度自適應，不擠壓上下元件) */}
+                        {/* 2. 中間卡片與翻牌區 */}
                         <div className="flex-1 min-h-0 flex flex-col items-center justify-center py-2 sm:py-3">
                             <div 
                                 className={`card-container w-full max-w-xl h-[42vh] max-h-[260px] min-h-[170px] cursor-pointer ${isFlipped ? 'flipped' : ''}`}
-                                onClick={() => setIsFlipped(!isFlipped)}
+                                onClick={handleToggleFlip}
                             >
                                 <div className="card-inner">
-                                    {/* 正面：特色 */}
+                                    {/* 正面：題目（特色描述） */}
                                     <div className="card-face card-front">
                                         <div className="bg-amber-100 text-amber-800 text-xs sm:text-sm font-bold px-3 py-0.5 rounded-full mb-2 border border-amber-300">
                                             特色描述
@@ -319,7 +359,7 @@
                                             {currentCard?.特色}
                                         </p>
                                     </div>
-                                    {/* 背面：名稱 */}
+                                    {/* 背面：答案（岩石/礦物名稱） */}
                                     <div className="card-face card-back">
                                         <div className="bg-blue-100 text-blue-800 text-xs sm:text-sm font-bold px-3 py-0.5 rounded-full mb-2 border border-blue-300">
                                             答案解答
@@ -332,14 +372,19 @@
                             </div>
 
                             <button 
-                                onClick={() => setIsFlipped(!isFlipped)} 
-                                className="mt-2.5 sm:mt-3 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white font-bold py-1.5 sm:py-2 px-6 rounded-full shadow text-sm sm:text-base flex items-center gap-1.5 transition-transform"
+                                disabled={isTransitioning}
+                                onClick={handleToggleFlip} 
+                                className={`mt-2.5 sm:mt-3 font-bold py-1.5 sm:py-2 px-6 rounded-full shadow text-sm sm:text-base flex items-center gap-1.5 transition-transform ${
+                                    isTransitioning 
+                                    ? 'bg-indigo-400 text-white/80 cursor-not-allowed' 
+                                    : 'bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white'
+                                }`}
                             >
-                                <span>🔄</span> 翻轉看答案
+                                <span>🔄</span> 翻轉
                             </button>
                         </div>
 
-                        {/* 3. 底部搶答大按鈕與下一題 (shrink-0，高約 130px-160px，固定可視範圍內) */}
+                        {/* 3. 底部搶答大按鈕與下一題 */}
                         <div className="shrink-0 flex items-center justify-between pb-1 sm:pb-3 px-2 sm:px-8">
                             
                             {/* 1P 搶答按鈕 */}
@@ -347,15 +392,15 @@
                                 <div className="h-6 sm:h-7 mb-1 flex items-center justify-center">
                                     {answeringPlayer === '1P' && (
                                         <span className="text-xs sm:text-base font-black text-blue-600 fade-in animate-bounce">
-                                            1P 作答
+                                            1P作答
                                         </span>
                                     )}
                                 </div>
                                 <button 
-                                    disabled={buzzerLocked}
+                                    disabled={buzzerLocked || isTransitioning}
                                     onClick={() => handleBuzzer('1P')}
                                     className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full font-black text-xl sm:text-3xl transition-transform active:scale-90 flex flex-col items-center justify-center shadow-lg ${
-                                        buzzerLocked 
+                                        buzzerLocked || isTransitioning
                                         ? 'bg-slate-300 text-slate-400 opacity-50 cursor-not-allowed border-4 border-slate-300' 
                                         : 'bg-blue-600 text-white hover:bg-blue-500 border-4 border-blue-400 shadow-blue-300'
                                     }`}
@@ -369,10 +414,15 @@
                             <div className="flex flex-col items-center justify-center px-2">
                                 {showNextBtn ? (
                                     <button 
+                                        disabled={isTransitioning}
                                         onClick={handleNextQuestion} 
-                                        className="fade-in bg-purple-600 hover:bg-purple-500 active:scale-95 text-white text-base sm:text-xl font-black py-2.5 sm:py-3 px-5 sm:px-8 rounded-xl shadow-lg border-2 border-purple-400"
+                                        className={`fade-in text-white text-base sm:text-xl font-black py-2.5 sm:py-3 px-5 sm:px-8 rounded-xl shadow-lg border-2 ${
+                                            isTransitioning
+                                            ? 'bg-purple-400 border-purple-300 cursor-not-allowed'
+                                            : 'bg-purple-600 hover:bg-purple-500 active:scale-95 border-purple-400'
+                                        }`}
                                     >
-                                        下一題 ➔
+                                        {isTransitioning ? '回正中...' : '下一題 ➔'}
                                     </button>
                                 ) : (
                                     <div className="text-xs sm:text-sm text-slate-400 font-bold">
@@ -386,15 +436,15 @@
                                 <div className="h-6 sm:h-7 mb-1 flex items-center justify-center">
                                     {answeringPlayer === '2P' && (
                                         <span className="text-xs sm:text-base font-black text-red-600 fade-in animate-bounce">
-                                            2P 作答
+                                            2P作答
                                         </span>
                                     )}
                                 </div>
                                 <button 
-                                    disabled={buzzerLocked}
+                                    disabled={buzzerLocked || isTransitioning}
                                     onClick={() => handleBuzzer('2P')}
                                     className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full font-black text-xl sm:text-3xl transition-transform active:scale-90 flex flex-col items-center justify-center shadow-lg ${
-                                        buzzerLocked 
+                                        buzzerLocked || isTransitioning
                                         ? 'bg-slate-300 text-slate-400 opacity-50 cursor-not-allowed border-4 border-slate-300' 
                                         : 'bg-red-600 text-white hover:bg-red-500 border-4 border-red-400 shadow-red-300'
                                     }`}
